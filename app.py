@@ -86,12 +86,4 @@ def health():
 
 
 if __name__ == "__main__":
-    # Precarga opcional (falla de forma controlada si aún no hay índice)
-    try:
-        get_vector_store()
-        print("[App] Base vectorial cargada.")
-    except Exception as e:
-        print(f"[App] Aviso: {e}")
-        print("[App] Puedes indexar con: python -m src.indexar")
-
     app.run(debug=True, host="127.0.0.1", port=5000)
