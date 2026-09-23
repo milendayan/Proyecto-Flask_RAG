@@ -76,7 +76,7 @@ Abre en el navegador: **http://127.0.0.1:5000**
 ```text
 ├── app.py               # Servidor Flask (chat)
 ├── requirements.txt
-├── .env                # API key (no se sube a GitHub)
+├── .env                # API key
 ├── pdfs/               # PDFs de conocimiento
 ├── chroma/             # Base vectorial (se genera al indexar)
 ├── src/
