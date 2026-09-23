@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asistente RAG Académico</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Iconos de FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+    <div class="instagram-container">
+        <!-- Encabezado estilo Instagram -->
+        <header class="chat-header">
+            <div class="user-info">
+                <i class="fa-solid fa-chevron-left back-btn"></i>
+                <div class="avatar-container">
+                    <img src="https://ui-avatars.com/api/?name=RAG+Bot&background=gradient&color=fff" alt="Bot Avatar" class="avatar">
+                    <span class="status-dot"></span>
+                </div>
+                <div class="user-details">
+                    <span class="username">instabot_oficial <i class="fa-solid fa-circle-check verify-badge"></i></span>
+                    <span class="active-status">Activo(a) ahora</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <i class="fa-solid fa-phone"></i>
+                <i class="fa-solid fa-video"></i>
+                <i class="fa-circle-info"></i>
+            </div>
+        </header>
+
+        <!-- Área de Mensajes -->
+        <div class="chat-messages" id="chat-messages">
+            <div class="time-divider">Hoy</div>
+            
+            <!-- Mensaje Inicial del Bot -->
+            <div class="message bot-message">
+                <img src="https://ui-avatars.com/api/?name=RAG+Bot&background=gradient&color=fff" class="msg-avatar">
+                <div class="bubble">
+                    ¡Hola! Bienvenid@ a el asistente. ¿En qué te puedo ayudar? 📸
+                </div>
+            </div>
+        </div>
+
+        <!-- Barra de Entrada de Texto -->
+        <footer class="chat-input-area">
+            <form id="chat-form">
+                <div class="input-wrapper">
+                    <i class="fa-regular fa-face-smile icon-btn"></i>
+                    <input type="text" id="user-input" placeholder="Enviar mensaje..." autocomplete="off">
+                    <button type="submit" id="send-btn" class="send-btn">Enviar</button>
+                </div>
+            </form>
+        </footer>
+    </div>
+
+    <!-- JavaScript para interactuar con la Flask API -->
+    <script>
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const chatMessages = document.getElementById('chat-messages');
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const messageText = userInput.value.trim();
+            if (!messageText) return;
+
+            // 1. Mostrar mensaje del usuario
+            appendMessage(messageText, 'user-message');
+            userInput.value = '';
+
+            // 2. Enviar petición AJAX al backend de Flask
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: messageText })
+                });
+                
+                const data = await response.json();
+                
+                // 3. Mostrar respuesta del bot tras una breve simulación de espera
+                setTimeout(() => {
+                    appendMessage(data.response, 'bot-message');
+                }, 400);
+
+            } catch (error) {
+                console.error('Error:', error);
+                appendMessage('Ocurrió un error al conectar con el servidor.', 'bot-message');
+            }
+        });
+
+        function appendMessage(text, type) {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message', type);
+
+            if (type === 'bot-message') {
+                msgDiv.innerHTML = `
+                    <img src="https://ui-avatars.com/api/?name=RAG+Bot&background=gradient&color=fff" class="msg-avatar">
+                    <div class="bubble">${escapeHTML(text)}</div>
+                `;
+            } else {
+                msgDiv.innerHTML = `
+                    <div class="bubble">${escapeHTML(text)}</div>
+                `;
+            }
+
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll hacia abajo
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+    </script>
+</body>
+</html>
