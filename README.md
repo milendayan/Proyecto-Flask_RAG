@@ -11,14 +11,7 @@ Chatbot web con Flask que responde preguntas sobre reglamentos académicos usand
 
 ## Instalación (desde cero)
 
-### 1. Clonar el repositorio
-
-```bash
-git clone https://github.com/TU_USUARIO/TU_REPO.git
-cd TU_REPO
-```
-
-### 2. Crear y activar el entorno virtual
+### 1. Crear y activar el entorno virtual
 
 **Windows (PowerShell):**
 ```powershell
@@ -26,13 +19,13 @@ python -m venv .venv
 .venv\Scripts\activate
 ```
 
-### 3. Instalar dependencias
+### 2. Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configurar la API key de Groq
+### 3. Configurar la API key de Groq
 
 Crea un archivo `.env` en la raíz del proyecto:
 
@@ -43,7 +36,7 @@ GROQ_MODEL=openai/gpt-oss-120b
 
 > Obtén tu clave en: https://console.groq.com/keys
 
-### 5. Colocar los PDFs
+### 4. Colocar los PDFs
 
 Copia tus documentos PDF dentro de la carpeta:
 
@@ -51,7 +44,7 @@ Copia tus documentos PDF dentro de la carpeta:
 pdfs/
 ```
 
-### 6. Indexar la base de conocimientos (solo una vez)
+### 5. Indexar la base de conocimientos (solo una vez)
 
 ```bash
 python -m src.indexar
@@ -63,7 +56,7 @@ Si cambias los PDFs y quieres regenerar todo:
 python -m src.indexar --force
 ```
 
-### 7. Ejecutar la aplicación
+### 6. Ejecutar la aplicación
 
 ```bash
 python app.py
