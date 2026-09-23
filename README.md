@@ -88,9 +88,3 @@ Abre en el navegador: **http://127.0.0.1:5000**
 └── static/css/
     └── style.css
 ```
-
-## Uso rápido
-
-1. Escribe una pregunta en el chat (ej. *¿Cuántas inasistencias puedo tener?*).
-2. El sistema recupera fragmentos relevantes de los PDFs.
-3. Groq genera la respuesta citando fuente y página.
