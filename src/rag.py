@@ -7,9 +7,10 @@ from typing import Any
 
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFDirectoryLoader
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.config import (
@@ -21,12 +22,21 @@ from src.config import (
     EMBEDDING_MODEL,
     GROQ_API_KEY,
     GROQ_MODEL,
+    HF_TOKEN,
     PDFS_DIR,
 )
 
-# ---------------------------------------------------------------------------
-# Prompt del sistema
-# ---------------------------------------------------------------------------
+CONTEXTUALIZE_Q_PROMPT = """Dada una conversación y la última pregunta del usuario que podría hacer referencia al contexto del historial, formula una pregunta independiente que pueda ser entendida sin el historial de conversación. NO respondas la pregunta, solo reescríbela si es necesario; de lo contrario, devuélvela tal como está.
+
+Historial de conversación:
+{chat_history}
+
+Última pregunta: {question}
+
+Pregunta independiente:"""
+
+contextualize_q_prompt = ChatPromptTemplate.from_template(CONTEXTUALIZE_Q_PROMPT)
+
 PROMPT_TEMPLATE = """Eres un asistente legal experto en reglamentos y normas.
 Responde la pregunta usando ÚNICAMENTE la información del contexto proporcionado.
 Al final de cada parte de la respuesta, incluye entre paréntesis la fuente y la página
@@ -44,42 +54,36 @@ Respuesta:"""
 
 prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
 
-
-# ---------------------------------------------------------------------------
-# Estado global (se carga una sola vez al arrancar)
-# ---------------------------------------------------------------------------
-_embeddings: HuggingFaceEmbeddings | None = None
+_embeddings: HuggingFaceInferenceAPIEmbeddings | None = None
 _vector_store: Chroma | None = None
 _llm: ChatGroq | None = None
 
 
-def get_embeddings() -> HuggingFaceEmbeddings:
+def get_embeddings() -> HuggingFaceEndpointEmbeddings:
     global _embeddings
     if _embeddings is None:
-        print(f"[RAG] Cargando modelo de embeddings: {EMBEDDING_MODEL} ...")
-        _embeddings = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
+        if not HF_TOKEN:
+            raise ValueError(
+                "Falta HUGGINGFACE_TOKEN en las variables de entorno. "
+                "Genera uno gratuito en https://huggingface.co/settings/tokens"
+            )
+        _embeddings = HuggingFaceEndpointEmbeddings(
+            model=EMBEDDING_MODEL,
+            huggingfacehub_api_token=HF_TOKEN,
         )
-        print("[RAG] Embeddings listos.")
     return _embeddings
 
 
 def get_llm() -> ChatGroq:
     global _llm
     if _llm is None:
-        if not GROQ_API_KEY or GROQ_API_KEY.startswith("gsk_PEGA"):
-            raise ValueError(
-                "Falta GROQ_API_KEY. Crea un archivo .env en la raíz del proyecto "
-                "con tu clave (ver .env.example)."
-            )
+        if not GROQ_API_KEY:
+            raise ValueError("Falta GROQ_API_KEY en las variables de entorno.")
         _llm = ChatGroq(
             model=GROQ_MODEL,
             temperature=0.0,
             api_key=GROQ_API_KEY,
         )
-        print(f"[RAG] LLM configurado: {GROQ_MODEL}")
     return _llm
 
 
@@ -88,48 +92,29 @@ def get_vector_store() -> Chroma:
     if _vector_store is None:
         embeddings = get_embeddings()
         if CHROMA_DIR.exists() and any(CHROMA_DIR.iterdir()):
-            print(f"[RAG] Cargando base vectorial existente: {CHROMA_DIR}")
             _vector_store = Chroma(
                 persist_directory=str(CHROMA_DIR),
                 embedding_function=embeddings,
                 collection_name=COLLECTION_NAME,
             )
         else:
-            print("[RAG] No hay base vectorial. Ejecuta indexar_documentos() primero.")
             raise FileNotFoundError(
-                f"No existe la carpeta chroma/ o está vacía. "
-                f"Coloca PDFs en pdfs/ y ejecuta: python -m src.indexar"
+                f"No existe la carpeta chroma/ o está vacía."
             )
     return _vector_store
 
 
-# ---------------------------------------------------------------------------
-# Indexación (se ejecuta una vez o cuando cambian los PDFs)
-# ---------------------------------------------------------------------------
 def indexar_documentos(force: bool = False) -> int:
-    """
-    Carga todos los PDF de la carpeta pdfs/, los divide en fragmentos,
-    genera embeddings y los guarda en ChromaDB.
-
-    Returns:
-        Número de fragmentos indexados.
-    """
     global _vector_store
 
     if not PDFS_DIR.exists() or not any(PDFS_DIR.glob("*.pdf")):
-        raise FileNotFoundError(
-            f"No se encontraron PDFs en {PDFS_DIR}. "
-            "Coloca tus archivos .pdf dentro de la carpeta pdfs/."
-        )
+        raise FileNotFoundError(f"No se encontraron PDFs en {PDFS_DIR}.")
 
     if force and CHROMA_DIR.exists():
         shutil.rmtree(CHROMA_DIR)
-        print(f"[RAG] Base anterior eliminada: {CHROMA_DIR}")
 
-    print(f"[RAG] Cargando PDFs desde {PDFS_DIR} ...")
     loader = PyPDFDirectoryLoader(str(PDFS_DIR))
     documents = loader.load()
-    print(f"[RAG] Páginas cargadas: {len(documents)}")
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
@@ -137,10 +122,8 @@ def indexar_documentos(force: bool = False) -> int:
         separators=["\n\n", "\n", ".", " "],
     )
     chunks = splitter.split_documents(documents)
-    print(f"[RAG] Fragmentos generados: {len(chunks)}")
 
     embeddings = get_embeddings()
-    print("[RAG] Indexando en ChromaDB (puede tardar unos minutos la primera vez)...")
     _vector_store = Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
@@ -148,29 +131,40 @@ def indexar_documentos(force: bool = False) -> int:
         collection_name=COLLECTION_NAME,
         collection_metadata={"hnsw:space": "cosine"},
     )
-    total = _vector_store._collection.count()
-    print(f"[RAG] ✓ Indexados {total} fragmentos en {CHROMA_DIR}")
-    return total
+    return _vector_store._collection.count()
 
 
-# ---------------------------------------------------------------------------
-# Pipeline de consulta
-# ---------------------------------------------------------------------------
-def rag_pipeline(pregunta: str, k: int = DEFAULT_K, verbose: bool = False) -> dict[str, Any]:
-    """
-    Flujo completo: pregunta → recuperación → prompt aumentado → respuesta Groq.
+def _format_chat_history(history: list[dict[str, str]]) -> str:
+    formatted = []
+    for msg in history:
+        role = "Usuario" if msg.get("role") == "user" else "Asistente"
+        formatted.append(f"{role}: {msg.get('content', '')}")
+    return "\n".join(formatted)
 
-    Returns:
-        dict con keys: pregunta, fragmentos, contexto, respuesta, tokens_contexto_aprox
-    """
+
+def rag_pipeline(
+    pregunta: str,
+    historial: list[dict[str, str]] | None = None,
+    k: int = DEFAULT_K,
+) -> dict[str, Any]:
     vector_store = get_vector_store()
     llm = get_llm()
+
+    historial_formateado = _format_chat_history(historial or [])
+
+    if historial_formateado.strip():
+        prompt_contextualizer = contextualize_q_prompt.invoke(
+            {"chat_history": historial_formateado, "question": pregunta}
+        )
+        pregunta_autonoma = llm.invoke(prompt_contextualizer).content.strip()
+    else:
+        pregunta_autonoma = pregunta
 
     retriever = vector_store.as_retriever(
         search_type="similarity",
         search_kwargs={"k": k},
     )
-    docs = retriever.invoke(pregunta)
+    docs = retriever.invoke(pregunta_autonoma)
 
     contexto = "\n\n---\n\n".join(
         f"[Fuente: {os.path.basename(d.metadata.get('source', '?'))} — "
@@ -178,20 +172,13 @@ def rag_pipeline(pregunta: str, k: int = DEFAULT_K, verbose: bool = False) -> di
         for d in docs
     )
 
-    prompt = prompt_template.invoke({"context": contexto, "question": pregunta})
+    prompt = prompt_template.invoke({"context": contexto, "question": pregunta_autonoma})
     respuesta = llm.invoke(prompt).content
-
-    if verbose:
-        print(f"Fragmentos recuperados: {len(docs)}")
-        for i, d in enumerate(docs, 1):
-            fuente = os.path.basename(d.metadata.get("source", "?"))
-            pagina = d.metadata.get("page", "?")
-            print(f"  [{i}] {fuente} Pág.{pagina}: {d.page_content[:80]}...")
 
     return {
         "pregunta": pregunta,
+        "pregunta_autonoma": pregunta_autonoma,
         "fragmentos": docs,
         "contexto": contexto,
         "respuesta": respuesta,
-        "tokens_contexto_aprox": len(contexto) // 4,
     }
