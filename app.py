@@ -84,5 +84,14 @@ def health():
     code = 200 if status["ok"] else 503
     return jsonify(status), code
 
+
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    # Precarga opcional (falla de forma controlada si aún no hay índice)
+    try:
+        get_vector_store()
+        print("[App] Base vectorial cargada.")
+    except Exception as e:
+        print(f"[App] Aviso: {e}")
+        print("[App] Puedes indexar con: python -m src.indexar")
+
+    app.run(debug=True, host="127.0.0.1", port=5000)
